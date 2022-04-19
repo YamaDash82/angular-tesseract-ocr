@@ -1,0 +1,19 @@
+.camera-parent {
+  width: 100vw;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  background-color: aqua;
+}
+
+.camera-parent2 {
+  display: flex;
+}
+
+
+.ocr-button {
+  box-sizing: border-box;
+  width: 90%;
+  margin: 0 5%;
+  font-size: 1.5rem;
+}
