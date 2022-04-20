@@ -16,36 +16,48 @@ import { Subject } from 'rxjs';
     >Video Camera Area</video>
     <div class="camera-parent">
       <div class="camera-parent2">
-        <canvas
-          #previewCanvas
-          class="video-preview"
-        >
-        </canvas>
+        <div class="camera-parent1">
+          <canvas
+            #previewCanvas
+            class="video-preview"
+          >
+          </canvas>
+          <div>
+            <mat-slider 
+              vertical="true" 
+              #videoVSlider
+              class="v-slider"
+              [style.height.px]="vSliderSetting.height"
+              [max]="vSliderSetting.max"
+              [(ngModel)]="vSliderValue"
+              (valueChange)="setCaptureSize(vSliderValue, hSliderValue)"
+            ></mat-slider>
+          </div>
+        </div>
         <div>
           <mat-slider 
-            vertical="true" 
-            #videoVSlider
-            class="v-slider"
+            #videoHSlider
+            class="h-slider"
+            [style.width.px]="hSliderSeting.width"
+            [max]="hSliderSeting.max"
+            [(ngModel)]="hSliderValue"
+            (valueChange)="setCaptureSize(vSliderValue, hSliderValue)"
           ></mat-slider>
         </div>
-        
       </div>
-      <div>
-        <mat-slider 
-          #videoHSlider
-          class="h-slider"
-        ></mat-slider>
-      </div>
-      
     </div>
-    
-    
     
     <canvas
       #captured
+      class="captured"
     >
     </canvas>
-    <button (click)="recognize()" class="ocr-button">読込</button>
+    <button 
+      (click)="recognize()" 
+      mat-raised-button 
+      class="ocr-button"
+      color="primary"
+    >読込</button>
   `,
   styleUrls: ['./app.component.css']
 })
@@ -53,27 +65,34 @@ export class AppComponent implements OnInit, AfterViewChecked, AfterViewInit {
   @ViewChild('targetVideo') videoVc !: ElementRef;
   videoEmt!: HTMLVideoElement;
 
-  @ViewChild('previewCanvas') canvasVc !: ElementRef;
-  canvasEmt!: HTMLCanvasElement;
-  canvasCtx!: CanvasRenderingContext2D | null;
+  @ViewChild('previewCanvas') previewCanvasVc !: ElementRef;
+  previewEmt!: HTMLCanvasElement;
+  previewCvsCtx!: CanvasRenderingContext2D | null;
   
   @ViewChild('captured') capturedVc !: ElementRef;
   capturedEmt!: HTMLCanvasElement;
 
-  @ViewChild('videoVSlider') videoVSliderVc !: ElementRef;
-  videoVSliderEmt!: any;
-
-  @ViewChild('videoHSlider') videoHSliderVc !: ElementRef;
-  videoHSliderEmt!: any;
-  
   videoSize = { height: 0, width: 0 };
   videoSizeChanged = new Subject<{height: number, width: number}>();
   videoSizeChanged$ = this.videoSizeChanged.asObservable();
 
+  vSliderValue = 0;
+  vSliderSetting = {
+    height: 0,
+    max: 0
+  }
+  
+  hSliderValue = 0;
+  hSliderSeting = {
+    width: 0, 
+    max: 0
+  }
+  
+  
   //タブレット時のOCR切り取りサイズ 
-  //targetSize =  { width: 384, height: 192 };
+  //captureSize =  { width: 384, height: 192 };
   //スマホ時のOCR切り取りサイズ
-  targetSize =  { width: 192, height: 96 };
+  captureSize =  { width: 192, height: 96 };
 
   rectPoints: { x: number, y:number }[] = [
     {x: 0, y:0}, 
@@ -93,47 +112,42 @@ export class AppComponent implements OnInit, AfterViewChecked, AfterViewInit {
   ngOnInit(): void {
     //videoのサイズ変更時(スマホ/タブレットの縦横が変わった時を想定)
     this.videoSizeChanged$.subscribe(size => {
-      const settingVideoWidth = Math.floor(this.videoEmt.videoWidth / 2);
-      const settingVideoHeight = Math.floor(this.videoEmt.videoHeight / 2);
-      if(this.canvasEmt.width !== settingVideoWidth || this.canvasEmt.height !== settingVideoHeight) {
-        this.canvasEmt.width = settingVideoWidth ;
-        this.canvasEmt.height = settingVideoHeight;    
-        
-        const baseWidth = settingVideoWidth;
-        const baseHeight = settingVideoHeight;
-        
-        //カメラ映像から切り取る部分の座標を取得する。
-        //左上
-        this.rectPoints[0].x = Math.floor((baseWidth - this.targetSize.width) / 2);
-        this.rectPoints[0].y = Math.floor((baseHeight - this.targetSize.height) / 2);
+      //プレビュー画像のサイズ
+      const previewWidth = Math.floor(size.width * 2 / 3);
+      const previewHeight = Math.floor(size.height * 2 / 3);
+      
+      //プレビュー画像のサイズを設定
+      this.previewEmt.width = previewWidth;
+      this.previewEmt.height = previewHeight;    
+      
+      //縦スライダーの最大値を設定
+      this.vSliderSetting = {
+        height: previewHeight, 
+        max: previewHeight
+      }; 
+      
+      this.hSliderSeting = {
+        width: previewWidth, 
+        max: previewWidth 
+      };
 
-        //右上
-        this.rectPoints[1].x = Math.floor(baseWidth / 2) + Math.floor(this.targetSize.width / 2);
-        this.rectPoints[1].y = this.rectPoints[0].y;
-        
-        //右下
-        this.rectPoints[2].x = this.rectPoints[1].x;
-        this.rectPoints[2].y =  Math.floor(baseHeight / 2) + Math.floor(this.targetSize.height / 2);
-        
-        //左下
-        this.rectPoints[3].x = this.rectPoints[0].x;
-        this.rectPoints[3].y = this.rectPoints[2].y;
-      }
+      this.vSliderValue = Math.floor(this.vSliderSetting.height / 2);
+      this.hSliderValue = Math.floor(this.hSliderSeting.width * 2 / 3);
+
+      //キャプチャサイズ設定処理を行う。
+      this.setCaptureSize(this.vSliderValue, this.hSliderValue);
     });
+
+    this.takeVideo();
   }
 
   async ngAfterViewInit(): Promise<void> {
     this.videoEmt = this.videoVc.nativeElement;    
     
-    this.canvasEmt = this.canvasVc.nativeElement;
-    this.canvasCtx = this.canvasEmt.getContext('2d');
+    this.previewEmt = this.previewCanvasVc.nativeElement;
+    this.previewCvsCtx = this.previewEmt.getContext('2d');
     
     this.capturedEmt = this.capturedVc.nativeElement;
-    this.capturedEmt.width = this.targetSize.width;
-    this.capturedEmt.height = this.targetSize.height;
-    
-    this.videoVSliderEmt = this.videoVSliderVc.nativeElement;
-    this.videoHSliderEmt = this.videoHSliderVc.nativeElement;
     
     await ((): Promise<void> => {
       return new Promise((resolve, reject) => {
@@ -153,50 +167,91 @@ export class AppComponent implements OnInit, AfterViewChecked, AfterViewInit {
  
 
   async ngAfterViewChecked(): Promise<void> {
+    //videoのサイズ変更の有無をチェックする。
     if (
       this.videoSize.width !== this.videoEmt.videoWidth
       || this.videoSize.height !== this.videoEmt.videoHeight
     ) {
-      alert(`video height:${this.videoEmt.videoHeight}, width:${this.videoEmt.videoWidth}`);
+      //サイズをキャッシュする。
       this.videoSize.height = this.videoEmt.videoHeight;
       this.videoSize.width = this.videoEmt.videoWidth;
 
+      //サイズ変更時のイベントを発火する。(ストリームに流す。)
+      //サイズ変更時の処理はngOnInitで定義している。
       this.videoSizeChanged.next({
         height: this.videoEmt.videoHeight, 
         width: this.videoEmt.videoWidth
       });
     }
+  }
+
+  //キャプチャサイズ変更処理
+  setCaptureSize(height: number, width: number){
+    //取り込む画像サイズ
+    this.captureSize.height = height;
+    this.captureSize.width = width;
+
+    //取り込む際に使用するキャンバスのサイズ
+    this.capturedEmt.width = this.captureSize.width;
+    this.capturedEmt.height = this.captureSize.height;
     
+    //baseWidth、baseHeightはプレビューを表示するcanvasのサイズ。
+    const baseWidth = this.previewEmt.width;
+    const baseHeight = this.previewEmt.height;
+    
+    //カメラ映像から切り取る部分の座標を取得する。
+    //左上
+    this.rectPoints[0].x = Math.floor((baseWidth - this.captureSize.width) / 2);
+    this.rectPoints[0].y = Math.floor((baseHeight - this.captureSize.height) / 2);
+
+    //右上
+    this.rectPoints[1].x = Math.floor(baseWidth / 2) + Math.floor(this.captureSize.width / 2);
+    this.rectPoints[1].y = this.rectPoints[0].y;
+    
+    //右下
+    this.rectPoints[2].x = this.rectPoints[1].x;
+    this.rectPoints[2].y =  Math.floor(baseHeight / 2) + Math.floor(this.captureSize.height / 2);
+    
+    //左下
+    this.rectPoints[3].x = this.rectPoints[0].x;
+    this.rectPoints[3].y = this.rectPoints[2].y;
+
     this.takeVideo();
   }
 
   async takeVideo() {
+    //setIntervalが継続している場合、止める。
+    if(this.intervalId) {
+      clearInterval(this.intervalId);
+    }
+
     try {
       this.intervalId = setInterval(() => {
         this.videoEmt.play();
         
-        this.canvasCtx?.drawImage(this.videoEmt, 0, 0, this.canvasEmt.width, this.canvasEmt.height);
+        this.previewCvsCtx?.drawImage(this.videoEmt, 0, 0, this.previewEmt.width, this.previewEmt.height);
         
         //video再生画像中に、OCRで取り込む範囲の線を描画する。
-        if(this.canvasCtx) {
+        if(this.previewCvsCtx) {
           
-          this.canvasCtx.beginPath();
+          this.previewCvsCtx.beginPath();
           
-          this.canvasCtx.moveTo(this.rectPoints[0].x, this.rectPoints[0].y);
-          this.canvasCtx.lineTo(this.rectPoints[1].x, this.rectPoints[1].y);
-          this.canvasCtx.lineTo(this.rectPoints[2].x, this.rectPoints[2].y);
-          this.canvasCtx.lineTo(this.rectPoints[3].x, this.rectPoints[3].y);
-          this.canvasCtx.closePath();
+          this.previewCvsCtx.moveTo(this.rectPoints[0].x, this.rectPoints[0].y);
+          this.previewCvsCtx.lineTo(this.rectPoints[1].x, this.rectPoints[1].y);
+          this.previewCvsCtx.lineTo(this.rectPoints[2].x, this.rectPoints[2].y);
+          this.previewCvsCtx.lineTo(this.rectPoints[3].x, this.rectPoints[3].y);
+          this.previewCvsCtx.closePath();
           
-          this.canvasCtx.strokeStyle = "gray";
-          this.canvasCtx.lineWidth = 5;
+          this.previewCvsCtx.strokeStyle = "gray";
+          this.previewCvsCtx.lineWidth = 5;
   
-          this.canvasCtx.stroke();
+          this.previewCvsCtx.stroke();
         }
         
       }, 200);
     } catch(err) {
       setTimeout(() => {
+        alert('エラー');
         this.consoleText = err instanceof Error ? err.message : "takeVideoでエラー発生";
       });
     }
@@ -227,14 +282,14 @@ export class AppComponent implements OnInit, AfterViewChecked, AfterViewInit {
     //カメラ映像からOCRにかける領域を切り取る。
     const capCtx = this.capturedEmt.getContext('2d');
 
-    capCtx?.drawImage(this.canvasEmt, 
+    capCtx?.drawImage(this.previewEmt, 
       this.rectPoints[0].x, 
       this.rectPoints[0].y, 
-      this.targetSize.width, 
-      this.targetSize.height, 
+      this.captureSize.width, 
+      this.captureSize.height, 
       0, 0, 
-      this.targetSize.width, 
-      this.targetSize.height
+      this.captureSize.width, 
+      this.captureSize.height
     );
 
     //読み込む画像を取得する。
@@ -246,9 +301,9 @@ export class AppComponent implements OnInit, AfterViewChecked, AfterViewInit {
       await worker.load();
       //複数言語連ねるときは+で連結する。
       //https://github.com/naptha/tesseract.js/blob/master/docs/api.md#worker-load-language
-      await worker.loadLanguage('jpn');
+      await worker.loadLanguage('eng');
       //
-      await worker.initialize('jpn');
+      await worker.initialize('eng');
 
       
       const recongnized = await worker.recognize(image);
