@@ -301,9 +301,9 @@ export class AppComponent implements OnInit, AfterViewChecked, AfterViewInit {
       await worker.load();
       //複数言語連ねるときは+で連結する。
       //https://github.com/naptha/tesseract.js/blob/master/docs/api.md#worker-load-language
-      await worker.loadLanguage('eng');
+      await worker.loadLanguage('jpn');
       //
-      await worker.initialize('eng');
+      await worker.initialize('jpn');
 
       
       const recongnized = await worker.recognize(image);
